@@ -1,31 +1,39 @@
 # EW Market Intelligence (EWMI)
 
-EWMI is being developed in two layers:
+EWMI is a user-controlled market-analysis and trade-journaling workspace.
 
-- **GitHub Pages dashboard:** visual workspace and user interface.
-- **Private backend:** a Windows-hosted Python service running beside the MetaTrader 5 terminal.
+## Product design
+- Manual trading only. EWMI does not place, modify or close trades.
+- You choose your entry, stop-loss, take-profit and position size. EWMI does not impose a 1% risk rule.
+- MT5 is an optional connection menu for reading account information and tracking positions. Analysis and manual journaling remain available without MT5.
+- TradingView is the charting and analysis reference.
+- London and New York session monitoring uses their local time zones so daylight-saving changes are handled.
 
-## Current dashboard
-The current Pages interface still includes TradingView embeds, a browser-local trade journal, supply/demand register, analysis notes, checklist and chart-symbol settings. It does not yet consume the new backend API.
+## New implementation files
+- [Architecture and product design](ARCHITECTURE.md)
+- [TradingView Pine Script: daily bias and session monitor](tradingview/EWMI_Daily_Bias_Sessions.pine)
+- [Backend setup and API documentation](backend/README.md)
 
-## Backend milestone 1
-The new backend scaffold is in /backend. It provides authenticated read-only MT5 data endpoints, a first deterministic confirmed-swing BOS/CHOCH candidate detector, and a broker-specification-based risk preview.
+## TradingView integration
+The Pine Script indicator classifies the developing daily market as BULLISH, BEARISH, CONSOLIDATION or MIXED using daily EMA 20, EMA 50 and ADX. It records the classification at the London and New York session opens and exposes TradingView alert triggers.
 
-**Assisted execution is the selected product mode, but order placement is deliberately locked in this first milestone.** Every future order must have a valid stop-loss and pass configured risk limits. No AI output can bypass these checks.
+To use it:
+1. Open TradingView and select the relevant chart (EURUSD, GBPUSD or XAUUSD).
+2. Open Pine Editor and paste the contents of the EWMI Pine Script file.
+3. Add the indicator to the chart.
+4. Create an alert using **Any alert() function call** if you want session events sent to an external webhook. TradingView webhook alerts require an eligible account, 2FA and a reachable HTTPS endpoint.
+5. Review the indicator settings and understand the rules; it is a market-state filter, not a proven prediction system.
 
-See [backend setup and API documentation](backend/README.md).
+Important: the standard embedded TradingView widget does not expose its candle data to the parent website. EWMI cannot read that iframe directly. The Pine Script alert route is the initial integration. A TradingView Advanced Charts implementation is a separate option and requires EWMI to provide its own datafeed.
 
-## Deploy the dashboard with GitHub Pages
-1. Open repository Settings → Pages.
-2. Under Build and deployment, choose Deploy from a branch.
-3. Select branch main and folder /(root), then Save.
-4. The intended site URL is https://emawright.github.io/ew-market-intelligence/.
+## MT5 connection
+The Python MT5 connector is optional and read-only. Run it on the same Windows PC/VPS as the MT5 terminal. Log into Exness, Deriv, IC Markets, Pepperstone or another broker using the official MT5 terminal. EWMI should read the active terminal connection; do not enter broker passwords into the public website, browser storage, GitHub or chat. Broker symbol mappings must be verified individually.
 
-## Important limitations
-- GitHub Pages cannot host the Python API or securely store secrets.
-- Run the MT5 bridge on the same Windows PC/VPS as the MT5 terminal.
-- Broker symbols and contract specifications differ; configure and verify them on a demo account.
-- The structure detector is an initial rule set, not a proven profitable strategy or standalone signal.
-- Risk preview excludes commission, slippage, gaps and price movement.
-- No live order placement, scheduled email reports, Gemini/news integration or cloud trade database is enabled yet.
-- Never commit broker passwords, API keys, access tokens or .env files.
+## GitHub Pages
+The existing static dashboard remains hosted at:
+https://emawright.github.io/ew-market-intelligence/
+
+GitHub Pages cannot run the Python backend or receive private webhooks by itself. A separately hosted private backend is required for persistent session snapshots, optional MT5 sync, scheduled reports and email delivery.
+
+## Current limitations
+The new architecture, Pine Script indicator and read-only MT5 backend foundation are committed. The existing dashboard UI has not yet been rebuilt around the new Analysis, Sessions and Connections menus. Webhook ingestion, persistent storage, live dashboard integration, Gemini/news summaries and scheduled email reports remain future implementation work. No automated trade execution is included.
