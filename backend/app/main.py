@@ -12,6 +12,7 @@ except ImportError:
     mt5 = None
 
 APP_TOKEN = os.getenv("EWMI_API_TOKEN", "")
+MAX_RISK_PERCENT = float(os.getenv("EWMI_MAX_RISK_PERCENT", "1.0"))
 ALLOWED_ORIGINS = [x.strip() for x in os.getenv("EWMI_ALLOWED_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500").split(",") if x.strip()]
 SYMBOLS = {"EURUSD": os.getenv("EWMI_SYMBOL_EURUSD", "EURUSD"),
            "GBPUSD": os.getenv("EWMI_SYMBOL_GBPUSD", "GBPUSD"),
@@ -63,7 +64,8 @@ def candles(market: str, timeframe: str, count: int = 300, _: None = Depends(req
         raise HTTPException(status_code=400, detail="Unsupported timeframe")
     if not 20 <= count <= 2000:
         raise HTTPException(status_code=400, detail="count must be between 20 and 2000")
-    api, symbol = terminal(), resolve_symbol(market)
+    symbol = resolve_symbol(market)
+    api = terminal()
     if not api.symbol_select(symbol, True):
         api.shutdown()
         raise HTTPException(status_code=404, detail=f"MT5 symbol unavailable: {symbol}")
@@ -85,7 +87,7 @@ def structure(market: str, timeframe: str, count: int = 300, _: None = Depends(r
 
 @app.get("/account")
 def account(_: None = Depends(require_token)):
-    api, = (terminal(),)
+    api = terminal()
     info = api.account_info()
     if info is None:
         error = api.last_error()
@@ -117,10 +119,14 @@ class RiskPreview(BaseModel):
     entry: float = Field(gt=0)
     stop_loss: float = Field(gt=0)
     take_profit: float | None = Field(default=None, gt=0)
-    risk_percent: float = Field(gt=0, le=2.0)
+    risk_percent: float = Field(gt=0)
 
 @app.post("/risk/preview")
 def risk_preview(order: RiskPreview, _: None = Depends(require_token)):
+    if not 0 < MAX_RISK_PERCENT <= 2.0:
+        raise HTTPException(status_code=503, detail="EWMI_MAX_RISK_PERCENT must be greater than 0 and no more than 2.")
+    if order.risk_percent > MAX_RISK_PERCENT:
+        raise HTTPException(status_code=422, detail=f"Requested risk exceeds configured maximum of {MAX_RISK_PERCENT}%.")
     if order.side == "buy" and order.stop_loss >= order.entry:
         raise HTTPException(status_code=422, detail="For a buy, stop-loss must be below entry.")
     if order.side == "sell" and order.stop_loss <= order.entry:
@@ -129,7 +135,8 @@ def risk_preview(order: RiskPreview, _: None = Depends(require_token)):
         valid = order.take_profit > order.entry if order.side == "buy" else order.take_profit < order.entry
         if not valid:
             raise HTTPException(status_code=422, detail="Take-profit must be on the profit side of entry.")
-    api, symbol = terminal(), resolve_symbol(order.market)
+    symbol = resolve_symbol(order.market)
+    api = terminal()
     info, account = api.symbol_info(symbol), api.account_info()
     if info is None or account is None:
         api.shutdown()
