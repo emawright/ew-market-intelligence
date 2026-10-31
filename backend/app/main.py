@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hmac
 import os
 import sqlite3
 import smtplib
@@ -9,6 +10,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from contextlib import contextmanager
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
@@ -66,10 +68,15 @@ app.add_middleware(
 )
 
 
-def db() -> sqlite3.Connection:
+@contextmanager
+def db():
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
-    return connection
+    try:
+        yield connection
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def init_db() -> None:
@@ -272,15 +279,16 @@ async def tradingview_webhook(request: Request):
         raise HTTPException(status_code=400, detail="Expected a JSON TradingView alert payload")
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Webhook payload must be a JSON object")
-    if not WEBHOOK_SECRET or payload.get("secret") != WEBHOOK_SECRET:
+    if not WEBHOOK_SECRET or not hmac.compare_digest(str(payload.get("secret", "")), WEBHOOK_SECRET):
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
+    safe_payload = {key: value for key, value in payload.items() if key != "secret"}
     with db() as con:
         cur = con.execute(
             "INSERT INTO tv_events(received_at,event_time,broker_symbol,market,event,session,daily_bias,payload) VALUES(?,?,?,?,?,?,?,?)",
             (datetime.now(timezone.utc).isoformat(), str(payload.get("time", "")),
              str(payload.get("symbol", "")), str(payload.get("market", "")),
              str(payload.get("event", "")), str(payload.get("session", "")),
-             str(payload.get("daily_bias", "")), json.dumps(payload))
+             str(payload.get("daily_bias", "")), json.dumps(safe_payload))
         )
         event_id = cur.lastrowid
     return {"accepted": True, "id": event_id, "received_at": datetime.now(timezone.utc).isoformat()}
