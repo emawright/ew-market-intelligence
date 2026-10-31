@@ -3,7 +3,6 @@ import os
 from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
 from .structure import analyse_structure
 
 try:
@@ -21,7 +20,7 @@ TIMEFRAMES = {"M5": "TIMEFRAME_M5", "M15": "TIMEFRAME_M15", "H1": "TIMEFRAME_H1"
               "H4": "TIMEFRAME_H4", "D1": "TIMEFRAME_D1", "W1": "TIMEFRAME_W1"}
 
 app = FastAPI(title="EWMI API", version="0.1.0",
-              description="Read-only MT5 bridge and risk preview. Order execution is disabled in this milestone.")
+              description="Optional read-only MT5 data connector. No trade execution or risk enforcement.")
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_credentials=False,
                    allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
 
@@ -113,57 +112,3 @@ def positions(_: None = Depends(require_token)):
     api.shutdown()
     return {"positions": result}
 
-class RiskPreview(BaseModel):
-    market: str
-    side: str = Field(pattern="^(buy|sell)$")
-    entry: float = Field(gt=0)
-    stop_loss: float = Field(gt=0)
-    take_profit: float | None = Field(default=None, gt=0)
-    risk_percent: float = Field(gt=0)
-
-@app.post("/risk/preview")
-def risk_preview(order: RiskPreview, _: None = Depends(require_token)):
-    if not 0 < MAX_RISK_PERCENT <= 2.0:
-        raise HTTPException(status_code=503, detail="EWMI_MAX_RISK_PERCENT must be greater than 0 and no more than 2.")
-    if order.risk_percent > MAX_RISK_PERCENT:
-        raise HTTPException(status_code=422, detail=f"Requested risk exceeds configured maximum of {MAX_RISK_PERCENT}%.")
-    if order.side == "buy" and order.stop_loss >= order.entry:
-        raise HTTPException(status_code=422, detail="For a buy, stop-loss must be below entry.")
-    if order.side == "sell" and order.stop_loss <= order.entry:
-        raise HTTPException(status_code=422, detail="For a sell, stop-loss must be above entry.")
-    if order.take_profit is not None:
-        valid = order.take_profit > order.entry if order.side == "buy" else order.take_profit < order.entry
-        if not valid:
-            raise HTTPException(status_code=422, detail="Take-profit must be on the profit side of entry.")
-    symbol = resolve_symbol(order.market)
-    api = terminal()
-    info, account = api.symbol_info(symbol), api.account_info()
-    if info is None or account is None:
-        api.shutdown()
-        raise HTTPException(status_code=502, detail="Could not read broker symbol/account specifications.")
-    risk_cash = float(account.equity) * order.risk_percent / 100.0
-    distance = abs(order.entry - order.stop_loss)
-    if not info.trade_tick_size or not info.trade_tick_value or distance <= 0:
-        api.shutdown()
-        raise HTTPException(status_code=422, detail="Broker tick specifications invalid; cannot size safely.")
-    loss_per_lot = (distance / float(info.trade_tick_size)) * float(info.trade_tick_value)
-    raw_volume, step = risk_cash / loss_per_lot, float(info.volume_step)
-    volume = round((raw_volume // step) * step, 8)
-    if volume < float(info.volume_min):
-        api.shutdown()
-        raise HTTPException(status_code=422, detail="Calculated volume is below broker minimum. Do not increase lot size to force this trade.")
-    if volume > float(info.volume_max):
-        api.shutdown()
-        raise HTTPException(status_code=422, detail="Calculated volume exceeds broker maximum; reassess trade.")
-    result = {"market": order.market, "broker_symbol": symbol, "side": order.side,
-              "entry": order.entry, "stop_loss": order.stop_loss, "take_profit": order.take_profit,
-              "risk_percent": order.risk_percent, "equity": float(account.equity),
-              "risk_cash_estimate": round(loss_per_lot * volume, 2), "volume": volume,
-              "volume_min": float(info.volume_min), "volume_step": step,
-              "note": "Estimate excludes commission, slippage, gaps and changing prices. Recheck at execution time."}
-    api.shutdown()
-    return result
-
-@app.post("/orders/confirm")
-def confirm_order(_: None = Depends(require_token)):
-    raise HTTPException(status_code=423, detail="Execution is locked in milestone 1. Read-only MT5 data and risk preview are available. Execution requires demo validation, broker-specific checks, duplicate protection, daily-loss limits and explicit UI confirmation.")
