@@ -3,15 +3,19 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import smtplib
+from email.message import EmailMessage
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.background import BackgroundScheduler
 from .structure import analyse_structure
 
 try:
@@ -23,6 +27,12 @@ APP_TOKEN = os.getenv("EWMI_API_TOKEN", "")
 WEBHOOK_SECRET = os.getenv("EWMI_WEBHOOK_SECRET", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+SMTP_HOST = os.getenv("EWMI_SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("EWMI_SMTP_PORT", "465"))
+SMTP_USER = os.getenv("EWMI_SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("EWMI_SMTP_PASSWORD", "")
+REPORT_EMAIL_TO = os.getenv("EWMI_REPORT_EMAIL_TO", "")
+REPORT_EMAIL_FROM = os.getenv("EWMI_REPORT_EMAIL_FROM", SMTP_USER)
 DB_PATH = os.getenv("EWMI_DB_PATH", "ewmi.sqlite3")
 ALLOWED_ORIGINS = [x.strip() for x in os.getenv(
     "EWMI_ALLOWED_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500"
@@ -83,6 +93,12 @@ def init_db() -> None:
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    if SMTP_HOST and SMTP_USER and SMTP_PASSWORD and REPORT_EMAIL_TO and GEMINI_API_KEY:
+        scheduler = BackgroundScheduler(timezone=ZoneInfo("Africa/Nairobi"))
+        scheduler.add_job(send_scheduled_report, "cron", hour=7, minute=0, id="daily_eat", args=["daily"], replace_existing=True)
+        scheduler.add_job(send_scheduled_report, "cron", day_of_week="sun", hour=7, minute=0, id="weekly_eat", args=["weekly"], replace_existing=True)
+        scheduler.start()
+        app.state.scheduler = scheduler
 
 
 def require_token(authorization: str | None = Header(default=None)) -> None:
@@ -249,15 +265,15 @@ def positions(broker: str = "Exness", _: None = Depends(require_token)):
 
 
 @app.post("/webhooks/tradingview")
-async def tradingview_webhook(request: Request, secret: str | None = Header(default=None, alias="X-EWMI-Webhook-Secret")):
-    if not WEBHOOK_SECRET or secret != WEBHOOK_SECRET:
-        raise HTTPException(status_code=401, detail="Invalid webhook secret")
+async def tradingview_webhook(request: Request):
     try:
         payload = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Expected a JSON TradingView alert payload")
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Webhook payload must be a JSON object")
+    if not WEBHOOK_SECRET or payload.get("secret") != WEBHOOK_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid webhook secret")
     with db() as con:
         cur = con.execute(
             "INSERT INTO tv_events(received_at,event_time,broker_symbol,market,event,session,daily_bias,payload) VALUES(?,?,?,?,?,?,?,?)",
@@ -307,6 +323,46 @@ async def briefing(request: Request, _: None = Depends(require_token)):
     return {"generated_at": datetime.now(timezone.utc).isoformat(), "model": GEMINI_MODEL,
             "provider": "Google Gemini", "news_provider": "Google News RSS",
             "headlines": items, "briefing": gemini_generate(prompt)}
+
+
+def send_scheduled_report(kind: str) -> None:
+    if not all([SMTP_HOST, SMTP_USER, SMTP_PASSWORD, REPORT_EMAIL_TO, GEMINI_API_KEY]):
+        return
+    period = "weekly" if kind == "weekly" else "daily"
+    query = "forex EUR USD GBP gold XAUUSD Federal Reserve ECB Bank of England inflation employment"
+    headlines = read_news(query, 20)
+    prompt = (
+        f"Write EWMI's {period} market context report for a manual trader in Africa/Nairobi. "
+        "Cover EURUSD, GBPUSD and XAUUSD. Separate factual headlines from possible implications. "
+        "Highlight uncertainty and do not invent event times, prices or economic data. No trade instructions. "
+        f"Retrieved Google News RSS headlines: {json.dumps(headlines, ensure_ascii=False)}"
+    )
+    body = gemini_generate(prompt)
+    msg = EmailMessage()
+    msg["Subject"] = f"EWMI {period.title()} Market Briefing"
+    msg["From"] = REPORT_EMAIL_FROM
+    msg["To"] = REPORT_EMAIL_TO
+    msg.set_content(body + "\\n\\nHeadlines and sources:\\n" + "\\n".join(
+        f"- {item['title']} | {item['source']} | {item['published']} | {item['link']}" for item in headlines
+    ))
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.send_message(msg)
+
+
+@app.get("/reports/status")
+def report_status(_: None = Depends(require_token)):
+    configured = all([SMTP_HOST, SMTP_USER, SMTP_PASSWORD, REPORT_EMAIL_TO, GEMINI_API_KEY])
+    return {"daily_time": "07:00 Africa/Nairobi", "weekly_time": "Sunday 07:00 Africa/Nairobi",
+            "email_configured": configured, "scheduler_active": bool(getattr(app.state, "scheduler", None))}
+
+
+@app.post("/reports/send-test")
+def send_test_report(_: None = Depends(require_token)):
+    if not all([SMTP_HOST, SMTP_USER, SMTP_PASSWORD, REPORT_EMAIL_TO, GEMINI_API_KEY]):
+        raise HTTPException(status_code=503, detail="Configure SMTP, recipient and Gemini settings first.")
+    send_scheduled_report("daily")
+    return {"sent": True}
 
 
 @app.get("/reports/events")
