@@ -46,4 +46,4 @@ Add `tradingview/EWMI_Daily_Bias_Sessions.pine` to a chart. Enter the same webho
 The Pine script currently emits on the first session bar's close, not at the exact instant of the open. Use a 5-minute or 15-minute chart and interpret the timestamp accordingly. Validate the script in TradingView's Pine Editor before relying on it.
 
 ## Scheduled reports
-The API stores events, but daily 07:00 EAT and Sunday reports are not sent automatically by this service yet. Add a trusted scheduler and email provider only after the backend is deployed persistently. GitHub Pages cannot run scheduled Python jobs.
+When SMTP credentials, recipient and Gemini key are configured, APScheduler sends daily email at 07:00 Africa/Nairobi and weekly email on Sunday at 07:00 Africa/Nairobi. Configure `EWMI_SMTP_HOST`, `EWMI_SMTP_PORT`, `EWMI_SMTP_USER`, `EWMI_SMTP_PASSWORD`, `EWMI_REPORT_EMAIL_FROM` and `EWMI_REPORT_EMAIL_TO`. Check `GET /reports/status` and use `POST /reports/send-test` after connecting the API. The scheduler runs only while this backend process is running; use an always-on Windows VPS/service and monitoring. GitHub Pages cannot run scheduled Python jobs.
