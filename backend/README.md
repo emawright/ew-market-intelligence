@@ -10,8 +10,8 @@ GitHub Pages serves static files. It cannot safely hold broker/API secrets, run 
 2. In this folder run: py -m venv .venv
 3. Activate: .venv\\Scripts\\Activate.ps1
 4. Install: pip install -r requirements.txt
-5. Copy .env.example to .env, set a long random EWMI_API_TOKEN, and adjust symbol names to match your broker (for example EURUSD.a or GOLD).
-6. Set those environment variables in your PowerShell session and run: uvicorn app.main:app --host 127.0.0.1 --port 8000
+5. Copy .env.example to .env, set a long random EWMI_API_TOKEN, set EWMI_MAX_RISK_PERCENT (default 1.0; hard ceiling 2.0), and adjust symbol names to match your broker (for example EURUSD.a or GOLD).
+6. Set those environment variables in your PowerShell session and run: uvicorn app.main:app --env-file .env --host 127.0.0.1 --port 8000
 7. Open http://127.0.0.1:8000/docs and authorize with the bearer token.
 
 Do not expose port 8000 directly to the public internet. For remote access, use a properly authenticated VPN/private tunnel, TLS and firewall restrictions.
