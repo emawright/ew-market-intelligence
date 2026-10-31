@@ -15,6 +15,7 @@ newYorkSession = input.session("0800-1700", "New York session", group=groupSessi
 londonTimezone = input.string("Europe/London", "London timezone", group=groupSessions)
 newYorkTimezone = input.string("America/New_York", "New York timezone", group=groupSessions)
 showPanel = input.bool(true, "Show EWMI panel", group=groupSessions)
+webhookSecret = input.string("", "Private webhook secret", confirm=true, group=groupSessions)
 
 f_adx() =>
     [plusDI, minusDI, adxValue] = ta.dmi(adxLength, adxLength)
@@ -67,6 +68,6 @@ alertcondition(londonOpen, "EWMI London open", "EWMI London session has opened. 
 alertcondition(newYorkOpen, "EWMI New York open", "EWMI New York session has opened. Review current daily market state.")
 
 if londonOpen
-    alert('{"source":"EWMI TradingView","event":"session_open","session":"London","symbol":"' + syminfo.ticker + '","time":"' + str.tostring(time) + '","daily_bias":"' + dailyBias + '","adx":"' + str.tostring(dailyAdx, "#.0") + '"}', alert.freq_once_per_bar_close)
+    alert('{"source":"EWMI TradingView","event":"session_open","session":"London","symbol":"' + syminfo.ticker + '","time":"' + str.tostring(time) + '","daily_bias":"' + dailyBias + '","adx":"' + str.tostring(dailyAdx, "#.0") + '","secret":"' + webhookSecret + '"}', alert.freq_once_per_bar_close)
 if newYorkOpen
-    alert('{"source":"EWMI TradingView","event":"session_open","session":"New York","symbol":"' + syminfo.ticker + '","time":"' + str.tostring(time) + '","daily_bias":"' + dailyBias + '","adx":"' + str.tostring(dailyAdx, "#.0") + '"}', alert.freq_once_per_bar_close)
+    alert('{"source":"EWMI TradingView","event":"session_open","session":"New York","symbol":"' + syminfo.ticker + '","time":"' + str.tostring(time) + '","daily_bias":"' + dailyBias + '","adx":"' + str.tostring(dailyAdx, "#.0") + '","secret":"' + webhookSecret + '"}', alert.freq_once_per_bar_close)
