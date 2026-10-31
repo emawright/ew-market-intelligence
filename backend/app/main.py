@@ -340,7 +340,7 @@ def send_scheduled_report(kind: str) -> None:
     query = "forex EUR USD GBP gold XAUUSD Federal Reserve ECB Bank of England inflation employment"
     headlines = read_news(query, 20)
     with db() as con:
-        snapshots = [dict(row) for row in con.execute("SELECT received_at,event_time,market,event,session,daily_bias FROM tv_events ORDER BY id DESC LIMIT 40").fetchall()]
+        snapshots = [dict(row) for row in con.execute("SELECT received_at,event_time,market,broker_symbol,event,session,daily_bias FROM tv_events ORDER BY id DESC LIMIT 40").fetchall()]
     prompt = (
         f"Write EWMI's {period} market context report for a manual trader in Africa/Nairobi. "
         "Cover EURUSD, GBPUSD and XAUUSD. Separate factual headlines from possible implications. "
