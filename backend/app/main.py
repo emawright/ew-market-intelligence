@@ -342,7 +342,7 @@ def send_scheduled_report(kind: str) -> None:
     msg["Subject"] = f"EWMI {period.title()} Market Briefing"
     msg["From"] = REPORT_EMAIL_FROM
     msg["To"] = REPORT_EMAIL_TO
-    msg.set_content(body + "\\n\\nHeadlines and sources:\\n" + "\\n".join(
+    msg.set_content(body + "\n\nHeadlines and sources:\n" + "\n".join(
         f"- {item['title']} | {item['source']} | {item['published']} | {item['link']}" for item in headlines
     ))
     with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30) as server:
