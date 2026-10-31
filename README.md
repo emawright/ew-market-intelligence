@@ -1,39 +1,40 @@
 # EW Market Intelligence (EWMI)
 
-EWMI is a user-controlled market-analysis and trade-journaling workspace.
+EWMI is a manual trading analysis workspace for EURUSD, GBPUSD and XAUUSD.
 
-## Product design
-- Manual trading only. EWMI does not place, modify or close trades.
-- You choose your entry, stop-loss, take-profit and position size. EWMI does not impose a 1% risk rule.
-- MT5 is an optional connection menu for reading account information and tracking positions. Analysis and manual journaling remain available without MT5.
-- TradingView is the charting and analysis reference.
-- London and New York session monitoring uses their local time zones so daylight-saving changes are handled.
+## Operating principles
+- You control entries, stop-loss, take-profit, lot size and execution.
+- EWMI does not place, modify or close orders and does not enforce a fixed risk percentage.
+- Exness and Deriv are separate optional read-only MT5 profiles. Broker passwords stay inside official MT5 terminals.
+- Manual analysis and journaling work without a broker connection.
+- Google News and Gemini provide market context, not price feeds, economic-calendar guarantees or trade signals.
 
-## New implementation files
-- [Architecture and product design](ARCHITECTURE.md)
-- [TradingView Pine Script: daily bias and session monitor](tradingview/EWMI_Daily_Bias_Sessions.pine)
-- [Backend setup and API documentation](backend/README.md)
+## Current implementation
+- [Dashboard](index.html): Overview, Analysis, Sessions, TradingView, Trade Journal, Connections, Google + News, Reports and Settings.
+- [Architecture](ARCHITECTURE.md)
+- [Pine Script daily bias and session monitor](tradingview/EWMI_Daily_Bias_Sessions.pine)
+- [Private backend setup](backend/README.md)
 
-## TradingView integration
-The Pine Script indicator classifies the developing daily market as BULLISH, BEARISH, CONSOLIDATION or MIXED using daily EMA 20, EMA 50 and ADX. It records the classification at the London and New York session opens and exposes TradingView alert triggers.
+## TradingView
+The Pine indicator uses daily EMA 20, EMA 50 and ADX to label BULLISH, BEARISH, CONSOLIDATION or MIXED. It monitors 08:00 London and 08:00 New York local session opens. The alert is emitted at the first chart bar's close, not at the exact second of the session open.
 
-To use it:
-1. Open TradingView and select the relevant chart (EURUSD, GBPUSD or XAUUSD).
-2. Open Pine Editor and paste the contents of the EWMI Pine Script file.
-3. Add the indicator to the chart.
-4. Create an alert using **Any alert() function call** if you want session events sent to an external webhook. TradingView webhook alerts require an eligible account, 2FA and a reachable HTTPS endpoint.
-5. Review the indicator settings and understand the rules; it is a market-state filter, not a proven prediction system.
+To send alerts to EWMI:
+1. Deploy the private backend at a public HTTPS endpoint reachable by TradingView.
+2. Configure a strong `EWMI_WEBHOOK_SECRET` on the backend.
+3. Enter the same secret in the Pine indicator's private webhook setting.
+4. Create a TradingView alert using **Any alert() function call** and set the webhook URL to `https://YOUR-HOST/webhooks/tradingview`.
+5. Check the stored events in EWMI after alert delivery.
 
-Important: the standard embedded TradingView widget does not expose its candle data to the parent website. EWMI cannot read that iframe directly. The Pine Script alert route is the initial integration. A TradingView Advanced Charts implementation is a separate option and requires EWMI to provide its own datafeed.
+The embedded TradingView widget is visual only; it does not expose candles to the parent site.
 
-## MT5 connection
-The Python MT5 connector is optional and read-only. Run it on the same Windows PC/VPS as the MT5 terminal. Log into Exness, Deriv, IC Markets, Pepperstone or another broker using the official MT5 terminal. EWMI should read the active terminal connection; do not enter broker passwords into the public website, browser storage, GitHub or chat. Broker symbol mappings must be verified individually.
+## Exness and Deriv
+Install the official MT5 terminals, log in normally inside each terminal, and configure each terminal executable path and exact symbol names in `EWMI_BROKER_PROFILES_JSON`. To monitor both at once, use separate terminal installations/instances and paths. Some accounts use symbol suffixes or different gold symbols. Verify each in Market Watch.
 
-## GitHub Pages
-The existing static dashboard remains hosted at:
-https://emawright.github.io/ew-market-intelligence/
+## Google News and Gemini
+The backend retrieves Google News RSS search headlines and can ask Gemini to produce a cautious market-context briefing. Google News RSS is an undocumented best-effort feed; it can be delayed, duplicated or incomplete. Verify important information with the publisher, central bank or statistics agency. Gemini API keys remain on the private backend.
 
-GitHub Pages cannot run the Python backend or receive private webhooks by itself. A separately hosted private backend is required for persistent session snapshots, optional MT5 sync, scheduled reports and email delivery.
+## Daily and weekly reports
+When SMTP settings, a recipient and a Gemini key are configured, the backend schedules a daily email at 07:00 Africa/Nairobi and a weekly email on Sunday at 07:00 Africa/Nairobi. The backend must remain running for these jobs to fire. Configure and test delivery using the backend README.
 
-## Current limitations
-The new architecture, Pine Script indicator and read-only MT5 backend foundation are committed. The existing dashboard UI has not yet been rebuilt around the new Analysis, Sessions and Connections menus. Webhook ingestion, persistent storage, live dashboard integration, Gemini/news summaries and scheduled email reports remain future implementation work. No automated trade execution is included.
+## Deployment status and limitations
+The GitHub Pages frontend is committed, but its backend features require the separately deployed FastAPI service and its secrets/configuration. The MT5 connector has not been tested against your actual Exness or Deriv terminals; exact symbol mapping and separate terminal paths still need your local configuration. The Pine script has not been compiled in TradingView's Pine Editor in this session. Treat the initial bias rules as an explainable baseline, not a backtested strategy. No profitability or delivery guarantee is implied.
