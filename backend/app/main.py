@@ -26,7 +26,7 @@ except ImportError:
 APP_TOKEN = os.getenv("EWMI_API_TOKEN", "")
 WEBHOOK_SECRET = os.getenv("EWMI_WEBHOOK_SECRET", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 SMTP_HOST = os.getenv("EWMI_SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("EWMI_SMTP_PORT", "465"))
 SMTP_USER = os.getenv("EWMI_SMTP_USER", "")
@@ -331,11 +331,13 @@ def send_scheduled_report(kind: str) -> None:
     period = "weekly" if kind == "weekly" else "daily"
     query = "forex EUR USD GBP gold XAUUSD Federal Reserve ECB Bank of England inflation employment"
     headlines = read_news(query, 20)
+    with db() as con:
+        snapshots = [dict(row) for row in con.execute("SELECT received_at,event_time,market,event,session,daily_bias FROM tv_events ORDER BY id DESC LIMIT 40").fetchall()]
     prompt = (
         f"Write EWMI's {period} market context report for a manual trader in Africa/Nairobi. "
         "Cover EURUSD, GBPUSD and XAUUSD. Separate factual headlines from possible implications. "
         "Highlight uncertainty and do not invent event times, prices or economic data. No trade instructions. "
-        f"Retrieved Google News RSS headlines: {json.dumps(headlines, ensure_ascii=False)}"
+        f"Retrieved Google News RSS headlines: {json.dumps(headlines, ensure_ascii=False)}\\nStored TradingView session snapshots: {json.dumps(snapshots, ensure_ascii=False)}"
     )
     body = gemini_generate(prompt)
     msg = EmailMessage()
