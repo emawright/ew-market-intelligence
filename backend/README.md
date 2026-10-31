@@ -22,10 +22,8 @@ Do not expose port 8000 directly to the public internet. For remote access, use 
 - GET /candles/{market}/{timeframe}?count=300 — MT5 OHLC candles.
 - GET /analysis/structure/{market}/{timeframe} — confirmed swings and close-based BOS/CHOCH candidate.
 - GET /account and GET /positions — account and open-position snapshots.
-- POST /risk/preview — mandatory stop-loss validation and broker tick-based volume estimate.
-- POST /orders/confirm — intentionally locked (HTTP 423) in milestone 1.
 
-## Risk and analysis limitations
-The structure detector uses confirmed fractal pivots and candle closes. Pivots are delayed by the right-hand confirmation bars; this reduces premature swing labeling but does not eliminate false breaks. BOS/CHOCH labels are context-dependent and are not standalone entry signals. Risk estimates exclude commissions, slippage, gaps and execution-price movement.
+## Analysis and trade-control limitations
+The structure detector uses confirmed fractal pivots and candle closes. Pivots are delayed by the right-hand confirmation bars; this reduces premature swing labeling but does not eliminate false breaks. BOS/CHOCH labels are context-dependent and are not standalone entry signals.
 
-Execution stays disabled until demo testing verifies broker-specific symbol names, tick values, volume steps, filling modes, stop-distance rules, requotes, duplicate-request prevention, daily-loss limits and an auditable confirmation flow. No AI model may bypass deterministic risk checks.
+This connector is read-only. You choose and manage your own entries, stop-loss, take-profit, position size and execution platform. No trade is opened or closed by EWMI.
