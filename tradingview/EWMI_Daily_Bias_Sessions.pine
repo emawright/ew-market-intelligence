@@ -1,0 +1,72 @@
+//@version=6
+indicator("EWMI Daily Bias & Session Monitor", overlay=true, max_labels_count=100)
+
+// EWMI rule-based context tool. It does not place trades or prescribe position size.
+groupBias = "Daily market classification"
+adxLength = input.int(14, "ADX length", minval=2, group=groupBias)
+emaFastLength = input.int(20, "Fast daily EMA", minval=2, group=groupBias)
+emaSlowLength = input.int(50, "Slow daily EMA", minval=2, group=groupBias)
+adxTrendThreshold = input.float(18.0, "Minimum ADX for directional classification", minval=5, step=0.5, group=groupBias)
+groupSessions = "Session monitoring"
+showLondon = input.bool(true, "Monitor London open", group=groupSessions)
+showNewYork = input.bool(true, "Monitor New York open", group=groupSessions)
+londonSession = input.session("0800-1700", "London session", group=groupSessions)
+newYorkSession = input.session("0800-1700", "New York session", group=groupSessions)
+londonTimezone = input.string("Europe/London", "London timezone", group=groupSessions)
+newYorkTimezone = input.string("America/New_York", "New York timezone", group=groupSessions)
+showPanel = input.bool(true, "Show EWMI panel", group=groupSessions)
+
+f_adx() =>
+    [plusDI, minusDI, adxValue] = ta.dmi(adxLength, adxLength)
+    adxValue
+
+dailyClose = request.security(syminfo.tickerid, "D", close, barmerge.gaps_off, barmerge.lookahead_off)
+dailyFast = request.security(syminfo.tickerid, "D", ta.ema(close, emaFastLength), barmerge.gaps_off, barmerge.lookahead_off)
+dailySlow = request.security(syminfo.tickerid, "D", ta.ema(close, emaSlowLength), barmerge.gaps_off, barmerge.lookahead_off)
+dailyAdx = request.security(syminfo.tickerid, "D", f_adx(), barmerge.gaps_off, barmerge.lookahead_off)
+
+string dailyBias = "MIXED"
+if dailyAdx < adxTrendThreshold
+    dailyBias := "CONSOLIDATION"
+else if dailyFast > dailySlow and dailyClose > dailyFast
+    dailyBias := "BULLISH"
+else if dailyFast < dailySlow and dailyClose < dailyFast
+    dailyBias := "BEARISH"
+
+londonTime = time(timeframe.period, londonSession, londonTimezone)
+newYorkTime = time(timeframe.period, newYorkSession, newYorkTimezone)
+londonActive = not na(londonTime)
+newYorkActive = not na(newYorkTime)
+londonOpen = showLondon and londonActive and not londonActive[1]
+newYorkOpen = showNewYork and newYorkActive and not newYorkActive[1]
+
+var string londonSnapshot = "Waiting for London open"
+var string newYorkSnapshot = "Waiting for New York open"
+if londonOpen
+    londonSnapshot := dailyBias + " at open"
+if newYorkOpen
+    newYorkSnapshot := dailyBias + " at open"
+
+plot(dailyFast, "Daily EMA 20", color=color.teal)
+plot(dailySlow, "Daily EMA 50", color=color.orange)
+
+var table panel = table.new(position.top_right, 2, 5, border_width=1)
+if barstate.islast and showPanel
+    table.cell(panel, 0, 0, "EWMI MARKET STATE", text_color=color.white, bgcolor=color.rgb(22, 43, 68))
+    table.cell(panel, 1, 0, dailyBias, text_color=color.white, bgcolor=dailyBias == "BULLISH" ? color.new(color.green, 25) : dailyBias == "BEARISH" ? color.new(color.red, 25) : color.new(color.orange, 25))
+    table.cell(panel, 0, 1, "Daily ADX")
+    table.cell(panel, 1, 1, str.tostring(dailyAdx, "#.0"))
+    table.cell(panel, 0, 2, "London")
+    table.cell(panel, 1, 2, londonSnapshot)
+    table.cell(panel, 0, 3, "New York")
+    table.cell(panel, 1, 3, newYorkSnapshot)
+    table.cell(panel, 0, 4, "Rule")
+    table.cell(panel, 1, 4, "EMA20/50 + ADX")
+
+alertcondition(londonOpen, "EWMI London open", "EWMI London session has opened. Review current daily market state.")
+alertcondition(newYorkOpen, "EWMI New York open", "EWMI New York session has opened. Review current daily market state.")
+
+if londonOpen
+    alert('{"source":"EWMI TradingView","event":"session_open","session":"London","symbol":"' + syminfo.ticker + '","time":"' + str.tostring(time) + '","daily_bias":"' + dailyBias + '","adx":"' + str.tostring(dailyAdx, "#.0") + '"}', alert.freq_once_per_bar_close)
+if newYorkOpen
+    alert('{"source":"EWMI TradingView","event":"session_open","session":"New York","symbol":"' + syminfo.ticker + '","time":"' + str.tostring(time) + '","daily_bias":"' + dailyBias + '","adx":"' + str.tostring(dailyAdx, "#.0") + '"}', alert.freq_once_per_bar_close)
